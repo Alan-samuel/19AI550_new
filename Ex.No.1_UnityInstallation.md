@@ -1,6 +1,7 @@
 # Ex.No: 1  Installation of Unity for Game Development
-### DATE:                                                                            
-### REGISTER NUMBER : 
+### NAME: Alan Samuel Vedanayagam
+### DATE: 24-04-2026                                                                    
+### REGISTER NUMBER :212223040012 
 ### AIM: 
 To install Unity2022.3.57f1 or higher version for Game Development.
 ### Procedure:
@@ -30,6 +31,7 @@ To install Unity2022.3.57f1 or higher version for Game Development.
 
 ![image](https://github.com/user-attachments/assets/c902763e-4ba5-42b7-8251-a74db9ba5a42)
 ### Output:
+<img width="1916" height="1018" alt="image" src="https://github.com/user-attachments/assets/0447f6d1-415c-4e14-b8ed-42961f8183ef" />
 
 ### Result:
 Thus the unity installation was completed sucessfully.
