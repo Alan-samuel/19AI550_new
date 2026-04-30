@@ -1,6 +1,7 @@
-# Ex.No: 3  Basic movements in Unity 
-### DATE:                                                                            
-### REGISTER NUMBER : 
+# Ex.No: 3  Basic movements in Unity
+### NAME: Alan Samuel Vedanayagam
+### DATE: 30-04-26                                                                       
+### REGISTER NUMBER : 212223040012 
 ### AIM: 
  To learn the basic movements translation,scaling and rotation of game objects through code.
 ### Procedure:
@@ -58,7 +59,7 @@ public class TransformOperations : MonoBehaviour
 ```
 ### Output:
 
-
+<img width="1919" height="1084" alt="image" src="https://github.com/user-attachments/assets/f3ab85fb-58c8-4dfd-8866-fe027af7da0a" />
 
 
 
