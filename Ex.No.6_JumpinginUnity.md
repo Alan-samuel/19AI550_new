@@ -1,5 +1,5 @@
 # Ex.No: 6  Implementation of Jumping  behaviour- Unity
-### DATE: 14/05/2026  
+### DATE: 12/05/2026  
 ### NAME: Alan Samuel Vedanayagam
 ### REGISTER NUMBER : 212223040012
 ### AIM: 
