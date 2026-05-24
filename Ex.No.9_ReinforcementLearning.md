@@ -1,6 +1,7 @@
 # Ex.No: 9  Implementation of RollarBall Design using Reinforcement Learning 
-### DATE:                                                                            
-### REGISTER NUMBER : 
+### NAME: Alan Samuel Vedanayagam
+### DATE:24-05-26                                                                
+### REGISTER NUMBER :212223040012 
 ### AIM: 
 To write a program to design RollerBall and train the Rollerbal by Reinforcement learning  in Unity 
 ### Installation Required 
@@ -158,14 +159,7 @@ behaviors:
     time_horizon: 64
     summary_freq: 10000
 ### Output:
-
-
-
-
-
-
-
-
-
+<img width="519" height="320" alt="WhatsApp Image 2026-05-22 at 8 09 44 AM" src="https://github.com/user-attachments/assets/1b8943c9-f0df-45e1-a07d-7ba222f0bc4e" />
+<img width="421" height="292" alt="WhatsApp Image 2026-05-22 at 8 09 45 AM" src="https://github.com/user-attachments/assets/6eb4e3e1-4cdc-4541-b26c-4e5e5393750f" />
 ### Result:
 Thus the AI character was trained using reinforcement learning.
