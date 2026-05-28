@@ -1,72 +1,374 @@
-# Ex.No: 10  Implementation of 2D/3D game - Escape from the Falling Object Game
+# Ex.No: 10  Implementation of 3D game
 ### NAME: Alan Samuel Vedanayagam
-### DATE: 24/05/2026                                                                   
-### REGISTER NUMBER :212223040012
+### DATE: 25.05.2026                                                                           
+### REGISTER NUMBER : 212223040012
 ### AIM: 
-To develop a Escape from the Falling Object Game in Unity 
+To develop a 3D First Person Shooter (FPS) game in Unity using AI enemy detection and player tracking techniques.
 ### Algorithm:
 ```
-1. Create a new Unity project.
-2. Add a Player GameObject to the scene.
-3. Add a FallingObject GameObject to the scene.
-4. Attach the PlayerController script to the Player GameObject.
-5. Attach the FallingObject script to the FallingObject GameObject.
-6. Set the Player GameObject's tag and add a Collider2D (if needed).
-7. Set the Ground GameObject with tag "Ground" and add a Collider2D with IsTrigger enabled.
-8. In the PlayerController script, read horizontal input and move the player each frame (in Update).
-9. In the FallingObject script, move the object downwards each frame and check for collision with the ground using OnTriggerEnter2D.
-10. If the falling object collides with the ground, destroy the player object.
-```
+1. Open Unity and create/load the FPS project.
+2. Design the 3D environment and player setup.
+3. Implement enemy AI scripts for enemy behaviour.
+4. Detect the player using DetectionModule.
+5. Make enemies follow the player using FollowPlayer script.
+6. Control enemy actions using EnemyController.
+7. Execute the game and test player interaction.
+8. Display gameplay output successfully.
+```  
 ### Program:
-#### FallingObject.cs
+#### EnemyController.cs
 ```
+using System.Collections.Generic;
+using Unity.FPS.Game;
+using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.Events;
+
+namespace Unity.FPS.AI
+{
+    [RequireComponent(typeof(Health), typeof(Actor), typeof(NavMeshAgent))]
+    public class EnemyController : MonoBehaviour
+    {
+        [System.Serializable]
+        public struct RendererIndexData
+        {
+            public Renderer Renderer;
+            public int MaterialIndex;
+
+            public RendererIndexData(Renderer renderer, int index)
+            {
+                Renderer = renderer;
+                MaterialIndex = index;
+            }
+        }
+
+        [Header("Parameters")]
+        [Tooltip("The Y height at which the enemy will be automatically killed (if it falls off of the level)")]
+        public float SelfDestructYHeight = -20f;
+
+        [Tooltip("The distance at which the enemy considers that it has reached its current path destination point")]
+        public float PathReachingRadius = 2f;
+
+        [Tooltip("The speed at which the enemy rotates")]
+        public float OrientationSpeed = 10f;
+
+        [Tooltip("Delay after death where the GameObject is destroyed (to allow for animation)")]
+        public float DeathDuration = 0f;
+
+
+        [Header("Weapons Parameters")] [Tooltip("Allow weapon swapping for this enemy")]
+        public bool SwapToNextWeapon = false;
+
+        [Tooltip("Time delay between a weapon swap and the next attack")]
+        public float DelayAfterWeaponSwap = 0f;
+
+        [Header("Eye color")] [Tooltip("Material for the eye color")]
+        public Material EyeColorMaterial;
+
+        [Tooltip("The default color of the bot's eye")] [ColorUsageAttribute(true, true)]
+        public Color DefaultEyeColor;
+
+        [Tooltip("The attack color of the bot's eye")] [ColorUsageAttribute(true, true)]
+        public Color AttackEyeColor;
+
+        [Header("Flash on hit")] [Tooltip("The material used for the body of the hoverbot")]
+        public Material BodyMaterial;
+
+        [Tooltip("The gradient representing the color of the flash on hit")] [GradientUsageAttribute(true)]
+        public Gradient OnHitBodyGradient;
+
+        [Tooltip("The duration of the flash on hit")]
+        public float FlashOnHitDuration = 0.5f;
+
+        [Header("Sounds")] [Tooltip("Sound played when recieving damages")]
+        public AudioClip DamageTick;
+
+        [Header("VFX")] [Tooltip("The VFX prefab spawned when the enemy dies")]
+        public GameObject DeathVfx;
+
+        [Tooltip("The point at which the death VFX is spawned")]
+        public Transform DeathVfxSpawnPoint;
+
+        [Header("Loot")] [Tooltip("The object this enemy can drop when dying")]
+        public GameObject LootPrefab;
+
+        [Tooltip("The chance the object has to drop")] [Range(0, 1)]
+        public float DropRate = 1f;
+
+        [Header("Debug Display")] [Tooltip("Color of the sphere gizmo representing the path reaching range")]
+        public Color PathReachingRangeColor = Color.yellow;
+
+        [Tooltip("Color of the sphere gizmo representing the attack range")]
+        public Color AttackRangeColor = Color.red;
+
+        [Tooltip("Color of the sphere gizmo representing the detection range")]
+        public Color DetectionRangeColor = Color.blue;
+
+        public UnityAction onAttack;
+        public UnityAction onDetectedTarget;
+        public UnityAction onLostTarget;
+        public UnityAction onDamaged;
+
+        List<RendererIndexData> m_BodyRenderers = new List<RendererIndexData>();
+        MaterialPropertyBlock m_BodyFlashMaterialPropertyBlock;
+        float m_LastTimeDamaged = float.NegativeInfinity;
+
+        RendererIndexData m_EyeRendererData;
+        MaterialPropertyBlock m_EyeColorMaterialPropertyBlock;
+
+        public PatrolPath PatrolPath { get; set; }
+        public GameObject KnownDetectedTarget => DetectionModule.KnownDetectedTarget;
+        public bool IsTargetInAttackRange => DetectionModule.IsTargetInAttackRange;
+        public bool IsSeeingTarget => DetectionModule.IsSeeingTarget;
+        public bool HadKnownTarget => DetectionModule.HadKnownTarget;
+        public NavMeshAgent NavMeshAgent { get; private set; }
+        public DetectionModule DetectionModule { get; private set; }
+
+        int m_PathDestinationNodeIndex;
+        EnemyManager m_EnemyManager;
+        ActorsManager m_ActorsManager;
+        Health m_Health;
+        Actor m_Actor;
+        Collider[] m_SelfColliders;
+        GameFlowManager m_GameFlowManager;
+        bool m_WasDamagedThisFrame;
+        float m_LastTimeWeaponSwapped = Mathf.NegativeInfinity;
+        int m_CurrentWeaponIndex;
+        WeaponController m_CurrentWeapon;
+        WeaponController[] m_Weapons;
+        NavigationModule m_NavigationModule;
+
+        void Start()
+        {
+            m_EnemyManager = FindAnyObjectByType<EnemyManager>();
+            DebugUtility.HandleErrorIfNullFindObject<EnemyManager, EnemyController>(m_EnemyManager, this);
+
+            m_ActorsManager = FindAnyObjectByType<ActorsManager>();
+            DebugUtility.HandleErrorIfNullFindObject<ActorsManager, EnemyController>(m_ActorsManager, this);
+
+            m_EnemyManager.RegisterEnemy(this);
+
+            m_Health = GetComponent<Health>();
+            DebugUtility.HandleErrorIfNullGetComponent<Health, EnemyController>(m_Health, this, gameObject);
+
+            m_Actor = GetComponent<Actor>();
+            DebugUtility.HandleErrorIfNullGetComponent<Actor, EnemyController>(m_Actor, this, gameObject);
+
+            NavMeshAgent = GetComponent<NavMeshAgent>();
+            m_SelfColliders = GetComponentsInChildren<Collider>();
+
+            m_GameFlowManager = FindAnyObjectByType<GameFlowManager>();
+            DebugUtility.HandleErrorIfNullFindObject<GameFlowManager, EnemyController>(m_GameFlowManager, this);
+
+            // Subscribe to damage & death actions
+            m_Health.OnDie += OnDie;
+            m_Health.OnDamaged += OnDamaged;
+
+            // Find and initialize all weapons
+            FindAndInitializeAllWeapons();
+            var weapon = GetCurrentWeapon();
+            weapon.ShowWeapon(true);
+
+            var detectionModules = GetComponentsInChildren<DetectionModule>();
+            DebugUtility.HandleErrorIfNoComponentFound<DetectionModule, EnemyController>(detectionModules.Length, this,
+                gameObject);
+            DebugUtility.HandleWarningIfDuplicateObjects<DetectionModule, EnemyController>(detectionModules.Length,
+                this, gameObject);
+            // Initialize detection module
+            DetectionModule = detectionModules[0];
+            DetectionModule.onDetectedTarget += OnDetectedTarget;
+            DetectionModule.onLostTarget += OnLostTarget;
+            onAttack += DetectionModule.OnAttack;
+
+            var navigationModules = GetComponentsInChildren<NavigationModule>();
+            DebugUtility.HandleWarningIfDuplicateObjects<DetectionModule, EnemyController>(detectionModules.Length,
+                this, gameObject);
+            // Override navmesh agent data
+    ...
+
+<...etc...>
+```
+#### FollowPlayer.cs
+```
+using Unity.FPS.Game;
 using UnityEngine;
 
-public class FallingObject : MonoBehaviour
+namespace Unity.FPS.AI
 {
-    public float fallSpeed = 1f;
-
-    void Update()
+    public class FollowPlayer : MonoBehaviour
     {
-        transform.position += new Vector3(0, -fallSpeed * Time.deltaTime, 0);
-    }
+        Transform m_PlayerTransform;
+        Vector3 m_OriginalOffset;
 
-    void OnTriggerEnter2D(Collider2D other)
-    {
-        if (other.gameObject.CompareTag("Ground"))
+        void Start()
         {
-            Destroy(gameObject); // Destroy the object when it hits the ground
+            ActorsManager actorsManager = FindAnyObjectByType<ActorsManager>();
+            if (actorsManager != null)
+                m_PlayerTransform = actorsManager.Player.transform;
+            else
+            {
+                enabled = false;
+                return;
+            }
+
+            m_OriginalOffset = transform.position - m_PlayerTransform.position;
+        }
+
+        void LateUpdate()
+        {
+            transform.position = m_PlayerTransform.position + m_OriginalOffset;
         }
     }
 }
-
 ```
-#### PlayerController.cs
+#### DetectionModule.cs
 ```
-
+using System.Linq;
+using Unity.FPS.Game;
 using UnityEngine;
+using UnityEngine.Events;
 
-public class PlayerController : MonoBehaviour
+namespace Unity.FPS.AI
 {
-    public float speed = 5f;
-
-    void Update()
+    public class DetectionModule : MonoBehaviour
     {
-        float move = Input.GetAxis("Horizontal"); // Get left/right key input
-        transform.position += new Vector3(move * speed * Time.deltaTime, 0, 0);
+        [Tooltip("The point representing the source of target-detection raycasts for the enemy AI")]
+        public Transform DetectionSourcePoint;
+
+        [Tooltip("The max distance at which the enemy can see targets")]
+        public float DetectionRange = 20f;
+
+        [Tooltip("The max distance at which the enemy can attack its target")]
+        public float AttackRange = 10f;
+
+        [Tooltip("Time before an enemy abandons a known target that it can't see anymore")]
+        public float KnownTargetTimeout = 4f;
+
+        [Tooltip("Optional animator for OnShoot animations")]
+        public Animator Animator;
+
+        public UnityAction onDetectedTarget;
+        public UnityAction onLostTarget;
+
+        public GameObject KnownDetectedTarget { get; private set; }
+        public bool IsTargetInAttackRange { get; private set; }
+        public bool IsSeeingTarget { get; private set; }
+        public bool HadKnownTarget { get; private set; }
+
+        protected float TimeLastSeenTarget = Mathf.NegativeInfinity;
+
+        ActorsManager m_ActorsManager;
+
+        const string k_AnimAttackParameter = "Attack";
+        const string k_AnimOnDamagedParameter = "OnDamaged";
+
+        protected virtual void Start()
+        {
+            m_ActorsManager = FindAnyObjectByType<ActorsManager>();
+            DebugUtility.HandleErrorIfNullFindObject<ActorsManager, DetectionModule>(m_ActorsManager, this);
+        }
+
+        public virtual void HandleTargetDetection(Actor actor, Collider[] selfColliders)
+        {
+            // Handle known target detection timeout
+            if (KnownDetectedTarget && !IsSeeingTarget && (Time.time - TimeLastSeenTarget) > KnownTargetTimeout)
+            {
+                KnownDetectedTarget = null;
+            }
+
+            // Find the closest visible hostile actor
+            float sqrDetectionRange = DetectionRange * DetectionRange;
+            IsSeeingTarget = false;
+            float closestSqrDistance = Mathf.Infinity;
+            foreach (Actor otherActor in m_ActorsManager.Actors)
+            {
+                if (otherActor.Affiliation != actor.Affiliation)
+                {
+                    float sqrDistance = (otherActor.transform.position - DetectionSourcePoint.position).sqrMagnitude;
+                    if (sqrDistance < sqrDetectionRange && sqrDistance < closestSqrDistance)
+                    {
+                        // Check for obstructions
+                        RaycastHit[] hits = Physics.RaycastAll(DetectionSourcePoint.position,
+                            (otherActor.AimPoint.position - DetectionSourcePoint.position).normalized, DetectionRange,
+                            -1, QueryTriggerInteraction.Ignore);
+                        RaycastHit closestValidHit = new RaycastHit();
+                        closestValidHit.distance = Mathf.Infinity;
+                        bool foundValidHit = false;
+                        foreach (var hit in hits)
+                        {
+                            if (!selfColliders.Contains(hit.collider) && hit.distance < closestValidHit.distance)
+                            {
+                                closestValidHit = hit;
+                                foundValidHit = true;
+                            }
+                        }
+
+                        if (foundValidHit)
+                        {
+                            Actor hitActor = closestValidHit.collider.GetComponentInParent<Actor>();
+                            if (hitActor == otherActor)
+                            {
+                                IsSeeingTarget = true;
+                                closestSqrDistance = sqrDistance;
+
+                                TimeLastSeenTarget = Time.time;
+                                KnownDetectedTarget = otherActor.AimPoint.gameObject;
+                            }
+                        }
+                    }
+                }
+            }
+
+            IsTargetInAttackRange = KnownDetectedTarget != null &&
+                                    Vector3.Distance(transform.position, KnownDetectedTarget.transform.position) <=
+                                    AttackRange;
+
+            // Detection events
+            if (!HadKnownTarget &&
+                KnownDetectedTarget != null)
+            {
+                OnDetect();
+            }
+
+            if (HadKnownTarget &&
+                KnownDetectedTarget == null)
+            {
+                OnLostTarget();
+            }
+
+            // Remember if we already knew a target (for next frame)
+            HadKnownTarget = KnownDetectedTarget != null;
+        }
+
+        public virtual void OnLostTarget() => onLostTarget?.Invoke();
+
+        public virtual void OnDetect() => onDetectedTarget?.Invoke();
+
+        public virtual void OnDamaged(GameObject damageSource)
+        {
+            TimeLastSeenTarget = Time.time;
+            KnownDetectedTarget = damageSource;
+
+            if (Animator)
+            {
+                Animator.SetTrigger(k_AnimOnDamagedParameter);
+            }
+        }
+
+        public virtual void OnAttack()
+        {
+            if (Animator)
+            {
+                Animator.SetTrigger(k_AnimAttackParameter);
+            }
+        }
     }
 }
-
 ```
-
 ### Output:
-![WhatsApp Image 2025-05-20 at 21 15 36_54544c74](https://github.com/user-attachments/assets/f0ae77b1-f643-41ef-a604-3b00b31f9b10)
+<img width="1918" height="1023" alt="exp10 output 2" src="https://github.com/user-attachments/assets/97dc6a65-9950-4f24-bcf0-e615bf005606" />
 
-![WhatsApp Image 2025-05-20 at 21 16 29_6ff37835](https://github.com/user-attachments/assets/6213cc1e-28f4-49bf-a996-a848118888ce)
-
-![WhatsApp Image 2025-05-20 at 21 17 22_b6834eb3](https://github.com/user-attachments/assets/1495f1f2-34bd-4138-9d7a-fbe287956aea)
-
-
+<img width="1915" height="1016" alt="exp10 output 1" src="https://github.com/user-attachments/assets/c3108bed-083e-42b4-842c-a59b7b4d6bfa" />
 
 ### Result:
-Thus the game Escape from the Falling Object Game was developed using Unity.
+Thus the 3D FPS game was developed using Unity and adopted Enemy Detection and Player Tracking AI technology successfully.
